@@ -13,7 +13,7 @@ from config.logger import get_logger
 logger = get_logger(__name__)
 
 
-def fetch_and_save_data(url, query_params=None):
+def fetch_data(url, query_params=None):
     """
     Отримує дані з API, логує процес та зберігає результат.
 
@@ -26,9 +26,6 @@ def fetch_and_save_data(url, query_params=None):
     if not token:
         logger.critical("Не знайдено API_BEARER_TOKEN у файлі .env. Роботу зупинено.")
         sys.exit(1)
-
-    output_file = BASE_DIR / "output" / "data.json"
-    output_file.parent.mkdir(exist_ok=True)
 
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -52,9 +49,7 @@ def fetch_and_save_data(url, query_params=None):
             else:
                 logger.warning("Не вдалося знайти список елементів у відповіді.")
 
-        with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(api_data, f, ensure_ascii=False, indent=4)
-        logger.info(f"Результат збережено у файл: {output_file}")
+        return data_list
 
     except requests.exceptions.HTTPError as err:
         logger.error(
@@ -95,47 +90,129 @@ def fetch_data_by_date_range(url, start_date: str, end_date: str):
     ]
 
     params["filter"] = filters
-    fetch_and_save_data(url, query_params=params)
+    return fetch_data(url, query_params=params)
 
 
-# --- Нова функція для фільтрації за конкретною датою ---
 def fetch_data_by_date(url, date: str):
     """
     Формує запит для отримання даних за одну конкретну дату по полю 'createdAt'.
     Args:
         date (str): Конкретна дата у форматі 'YYYY-MM-DD'.
     """
-    logger.info(f"Запускаємо отримання даних за конкретну дату: {date}.")
-    start_datetime_utc = datetime.combine(
-        datetime.strptime(date, "%Y-%m-%d"), time.min
-    ).replace(tzinfo=timezone.utc)
-    end_datetime_utc = datetime.combine(
-        datetime.strptime(date, "%Y-%m-%d"), time.max
-    ).replace(tzinfo=timezone.utc)
+    return fetch_data_by_date_range(url, start_date=date, end_date=date)
 
-    start_datetime_str = start_datetime_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-    end_datetime_str = end_datetime_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    logger.info(f"Запускаємо отримання даних за {date}.")
-    params = {}
+def download_file(url: str, save_path: str):
+    """
+    Завантажує файл з вказаного URL та зберігає його за вказаним шляхом.
 
-    filters = [
-        f"createdAt||$gte||{start_datetime_str}",
-        f"createdAt||$lte||{end_datetime_str}",
-    ]
+    Args:
+        url (str): URL файлу для завантаження.
+        save_path (str): Шлях для збереження завантаженого файлу.
+    """
+    load_dotenv()
+    token = os.getenv("API_BEARER_TOKEN")
 
-    params["filter"] = filters
-    fetch_and_save_data(url, query_params=params)
+    if not token:
+        logger.critical("Не знайдено API_BEARER_TOKEN для завантаження файлу.")
+        return None
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        response = requests.get(url, headers=headers, stream=True)
+        response.raise_for_status()
 
+        with open(save_path, "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                file.write(chunk)
+        return save_path
+
+    except requests.exceptions.HTTPError as err:
+        logger.error(
+            f"HTTP помилка при завантаженні файлу {url}: {err.response.status_code}. Відповідь: {err.response.text}"
+        )
+    except requests.exceptions.Timeout:
+        logger.error(f"Запит на завантаження файлу {url} перевищив час очікування.")
+    except Exception:
+        logger.error(
+            f"Сталася непередбачувана помилка при завантаженні файлу {url}.",
+            exc_info=True,
+        )
+
+    return None
+
+def gather_urls_data_documents(base_link: str, start_date: str, end_date: str):
+    """
+    Збирає URL-адреси документів за вказаний діапазон дат.
+
+    Args:
+        base_link (str): Базовий URL для формування посилань на документи.
+        start_date (str): Початкова дата у форматі 'YYYY-MM-DD'.
+        end_date (str): Кінцева дата у форматі 'YYYY-MM-DD'.
+
+    Returns:
+        Optional[Dict]: Словник з URL-адресами документів або None у разі помилки.
+    """
+    documents = fetch_data_by_date_range(
+        f"{base_link}data/document",
+        start_date=start_date,
+        end_date=end_date,
+    )
+    with open(BASE_DIR / "output" / "documents.json", "w", encoding="utf-8") as f:
+        json.dump(documents, f, ensure_ascii=False, indent=4)
+    
+    for doc in documents:
+        name = doc.get("original", {}).get("link")
+        if not name:
+            continue
+        ending = name.split(".")[-1]
+        download_file(
+            f"{base_link}storage/file/{name}",
+            str(output_dir / f"{doc['id']}.{ending}"),
+        )
+
+def gather_urls_party_documents(base_link: str, start_date: str, end_date: str):
+    """
+    Збирає URL-адреси документів за вказаний діапазон дат.
+
+    Args:
+        base_link (str): Базовий URL для формування посилань на документи.
+        start_date (str): Початкова дата у форматі 'YYYY-MM-DD'.
+        end_date (str): Кінцева дата у форматі 'YYYY-MM-DD'.
+
+    Returns:
+        Optional[Dict]: Словник з URL-адресами документів або None у разі помилки.
+    """
+    documents = fetch_data_by_date_range(
+        f"{base_link}party-docs/document",
+        start_date=start_date,
+        end_date=end_date,
+    )
+    with open(BASE_DIR / "output" / "party_documents.json", "w", encoding="utf-8") as f:
+        json.dump(documents, f, ensure_ascii=False, indent=4)
+    
+    for doc in documents:
+        attachments = doc.get("attachments", [])
+        for attachment in attachments:
+            name = attachment.get("link")
+            if not name:
+                continue
+            ending = name.split(".")[-1]
+            download_file(
+                f"{base_link}storage/file/{name}",
+                str(output_dir / f"{doc['id']}.{ending}"),
+            )
 
 if __name__ == "__main__":
-    # fetch_and_save_data("https://stage-api-corp.court.gov.ua/api/v1/data/case")
-    # fetch_data_by_date_range(
-    #     "https://stage-api-corp.court.gov.ua/api/v1/data/case",
-    #     start_date="2023-08-25",
-    #     end_date="2023-08-27",
-    # )
-    fetch_data_by_date(
-        "https://stage-api-corp.court.gov.ua/api/v1/data/case",
-        date="2023-08-25",
+    base_link = "https://stage-api-corp.court.gov.ua/api/v1/"
+    output_dir = BASE_DIR / "output"
+    output_dir.mkdir(exist_ok=True)
+    documents_urls = gather_urls_data_documents(
+        base_link,
+        start_date="2023-08-25",
+        end_date="2023-08-27",
+    )
+    party_documents_urls = gather_urls_party_documents(
+        base_link,
+        start_date="2023-08-25",
+        end_date="2025-08-27",
     )
