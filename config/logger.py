@@ -1,6 +1,7 @@
 import logging
 import sys
 
+
 def get_logger(name: str) -> logging.Logger:
     """
     Налаштовує та повертає екземпляр логера з виводом у консоль.
