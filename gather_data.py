@@ -1,3 +1,4 @@
+from datetime import datetime, time, timezone
 import json
 import os
 import sys
@@ -12,7 +13,7 @@ from config.logger import get_logger
 logger = get_logger(__name__)
 
 
-def fetch_and_save_data(url, query_params = None):
+def fetch_and_save_data(url, query_params=None):
     """
     Отримує дані з API, логує процес та зберігає результат.
 
@@ -23,9 +24,7 @@ def fetch_and_save_data(url, query_params = None):
     token = os.getenv("API_BEARER_TOKEN")
 
     if not token:
-        logger.critical(
-            "Не знайдено API_BEARER_TOKEN у файлі .env. Роботу зупинено."
-        )
+        logger.critical("Не знайдено API_BEARER_TOKEN у файлі .env. Роботу зупинено.")
         sys.exit(1)
 
     output_file = BASE_DIR / "output" / "data.json"
@@ -66,6 +65,7 @@ def fetch_and_save_data(url, query_params = None):
     except Exception:
         logger.error("Сталася непередбачувана помилка.", exc_info=True)
 
+
 def fetch_data_by_date_range(url, start_date: str, end_date: str):
     """
     Формує запит для отримання даних за діапазон дат по полю 'createdAt'.
@@ -73,45 +73,69 @@ def fetch_data_by_date_range(url, start_date: str, end_date: str):
     Args:
         start_date (str): Початкова дата у форматі 'YYYY-MM-DD'.
         end_date (str): Кінцева дата у форматі 'YYYY-MM-DD'.
-        other_params: Інші параметри запиту (напр., limit, sort).
     """
-    logger.info(f"Запускаємо отримання даних за період з {start_date} по {end_date}.")
+    start_datetime_utc = datetime.combine(
+        datetime.strptime(start_date, "%Y-%m-%d"), time.min
+    ).replace(tzinfo=timezone.utc)
+    end_datetime_utc = datetime.combine(
+        datetime.strptime(end_date, "%Y-%m-%d"), time.max
+    ).replace(tzinfo=timezone.utc)
+
+    start_datetime_str = start_datetime_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+    end_datetime_str = end_datetime_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    logger.info(
+        f"Запускаємо отримання даних за період з {start_datetime_utc} по {end_datetime_utc}."
+    )
     params = {}
 
     filters = [
-        f"createdAt||$gte||{start_date}",
-        f"createdAt||$lte||{end_date}"
+        f"createdAt||$gte||{start_datetime_str}",
+        f"createdAt||$lte||{end_datetime_str}",
     ]
 
-    params['filter'] = filters
+    params["filter"] = filters
     fetch_and_save_data(url, query_params=params)
 
 
 # --- Нова функція для фільтрації за конкретною датою ---
-def fetch_data_by_specific_date(url, date: str):
+def fetch_data_by_date(url, date: str):
     """
     Формує запит для отримання даних за одну конкретну дату по полю 'createdAt'.
-    
-    Примітка: цей метод знайде записи, де `createdAt` точно дорівнює 'YYYY-MM-DD 00:00:00'.
-    Якщо потрібно знайти всі записи за день, краще використовувати fetch_data_by_date_range
-    з однаковими start_date та end_date.
-
     Args:
         date (str): Конкретна дата у форматі 'YYYY-MM-DD'.
-        other_params: Інші параметри запиту (напр., limit, sort).
     """
     logger.info(f"Запускаємо отримання даних за конкретну дату: {date}.")
-    params = {}
-    date_filter = f"createdAt||$eq||{date}"
-    params['filter'] = [date_filter]
+    start_datetime_utc = datetime.combine(
+        datetime.strptime(date, "%Y-%m-%d"), time.min
+    ).replace(tzinfo=timezone.utc)
+    end_datetime_utc = datetime.combine(
+        datetime.strptime(date, "%Y-%m-%d"), time.max
+    ).replace(tzinfo=timezone.utc)
 
+    start_datetime_str = start_datetime_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+    end_datetime_str = end_datetime_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    logger.info(f"Запускаємо отримання даних за {date}.")
+    params = {}
+
+    filters = [
+        f"createdAt||$gte||{start_datetime_str}",
+        f"createdAt||$lte||{end_datetime_str}",
+    ]
+
+    params["filter"] = filters
     fetch_and_save_data(url, query_params=params)
 
+
 if __name__ == "__main__":
-    fetch_and_save_data(
-        "https://stage-api-corp.court.gov.ua/api/v1/data/case")
+    # fetch_and_save_data("https://stage-api-corp.court.gov.ua/api/v1/data/case")
     # fetch_data_by_date_range(
     #     "https://stage-api-corp.court.gov.ua/api/v1/data/case",
     #     start_date="2023-08-25",
     #     end_date="2023-08-27",
     # )
+    fetch_data_by_date(
+        "https://stage-api-corp.court.gov.ua/api/v1/data/case",
+        date="2023-08-25",
+    )
