@@ -6,6 +6,6 @@ class Document(Base):
     __tablename__ = "file_storage"
 
     id = Column(Integer, primary_key=True, index=True)
-    file_name = Column(String, nullable=False, index=True)
+    file_link = Column(String, nullable=False, index=True)
     file_content = Column(BLOB, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
