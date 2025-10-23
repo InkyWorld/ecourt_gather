@@ -1,21 +1,32 @@
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
-from dotenv import load_dotenv
-from contextlib import contextmanager 
+from contextlib import contextmanager
+from urllib.parse import quote_plus
 
-from config.config import BASE_DIR
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
 from config.logger import get_logger
 
 logger = get_logger(__name__)
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'ecourt_gather.db'}")
-
-engine = create_engine(DATABASE_URL)
+server = os.environ.get("DB_SERVER")
+database = os.environ.get("DB_NAME")
+user = os.environ.get("DB_USER")
+password = os.environ.get("DB_PASSWORD")
+driver = os.environ.get("DB_DRIVER")
+password_encoded = quote_plus(password)
+driver_encoded = quote_plus(driver)
+db_url = (
+    f"mssql+pyodbc://{user}:{password_encoded}@{server}/{database}?"
+    f"driver={driver_encoded}&TrustServerCertificate=yes"
+)
+engine = create_engine(db_url)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
 
 def initialize_database():
     """
@@ -29,6 +40,7 @@ def initialize_database():
     except Exception as e:
         logger.error(f"Не вдалося створити таблиці: {e}", exc_info=True)
 
+
 @contextmanager
 def get_db_session():
     """
@@ -40,6 +52,7 @@ def get_db_session():
     finally:
         db.close()
         logger.info("Сесію бази даних закрито.")
+
 
 def get_db():
     """Створює сесію бази даних."""
