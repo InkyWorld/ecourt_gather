@@ -1,16 +1,15 @@
+import json
 import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import requests
-from dotenv import load_dotenv
 
 from config.logger import get_logger
 from repo.documents import DocumentRepository
 
 logger = get_logger(__name__)
-load_dotenv()
 
 
 class DocumentService:
@@ -33,12 +32,11 @@ class DocumentService:
             )
             response.raise_for_status()
             api_data = response.json()
-            data_list = api_data.get("data")
 
-            if data_list is None:
+            if api_data.get("data") is None:
                 logger.warning("У відповіді відсутній ключ 'data'.")
 
-            return data_list
+            return api_data
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Помилка запиту до API: {e}", exc_info=True)
@@ -61,23 +59,24 @@ class DocumentService:
                 url, query_params={"filter": filters, "limit": 100, "offset": offset}
             )
             offset += 100
-            documents.extend(new_docs)
+            documents.extend(new_docs.get("data"))
+            if not new_docs:
+                break
             if pageCount == 0:
-                pageCount = new_docs.get("pageCount")
+                pageCount = new_docs["pageCount"]
                 page = new_docs.get("page")
             page += 1
 
-        return self._fetch_data(url, query_params={"filter": filters})
+        return documents
 
     def _download_and_save_to_db(
         self, base_url: str, original_url: str, file_name: str, doc_type: str
     ):
-        token = os.getenv("API_BEARER_TOKEN")
-        if not token:
+        if not self.token:
             logger.critical("Не знайдено API_BEARER_TOKEN.")
             return
 
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = {"Authorization": f"Bearer {self.token}"}
         try:
             response = requests.get(base_url, headers=headers, stream=True, timeout=360)
             response.raise_for_status()
@@ -91,10 +90,14 @@ class DocumentService:
             logger.error(f"Помилка завантаження файлу {base_url}: {e}", exc_info=True)
 
     def gather_documents(self, base_link: str, start_date: str, end_date: str):
-        endpoint = "data/document" if self.doc_type == "data" else "party-docs/document"
-        documents = self._fetch_data_by_date_range(
-            f"{base_link}{endpoint}", start_date, end_date
+        # endpoint = "data/document" if self.doc_type == "data" else "party-docs/document"
+
+        documents = self.document_repo._fetch_data_from_db_by_date_range(
+            start_date, end_date, self.doc_type
         )
+        # documents = self._fetch_data_by_date_range(
+        #     f"{base_link}{endpoint}", start_date, end_date
+        # )
 
         if not documents:
             logger.warning(
@@ -103,12 +106,12 @@ class DocumentService:
             return
 
         for doc in documents:
-            doc_id = doc.get("id")
+            doc_id = doc.get("DocumentId")
             if not doc_id:
                 continue
 
             if self.doc_type == "data":
-                attachments = [doc.get("original", {})]
+                attachments = [json.loads(doc.get("OriginalText"))]
             else:
                 attachments = doc.get("attachments", [])
 

@@ -27,8 +27,8 @@ def main():
                 # start_date = (now - timedelta(hours=24, seconds=10)).isoformat()
                 # end_date = (now + timedelta(seconds=10)).isoformat()
 
-                start_date = "2023-05-04T03:24:17.000Z"
-                end_date = "2023-05-04T06:24:17.000Z"
+                start_date = "2025-10-06T17:26:32.000Z"
+                end_date = "2025-10-06T17:26:36.000Z"
                 logger.info(f"Період збору документів: {start_date} по {end_date}")
 
                 data_doc_service.gather_documents(
@@ -36,15 +36,14 @@ def main():
                     start_date=start_date,
                     end_date=end_date,
                 )
-                party_doc_service.gather_documents(
-                    BASE_LINK_AND_API_VERSION,
-                    start_date=start_date,
-                    end_date=end_date,
-                )
+                # party_doc_service.gather_documents(
+                #     BASE_LINK_AND_API_VERSION,
+                #     start_date=start_date,
+                #     end_date=end_date,
+                # )
         except Exception as e:
             logger.critical(f"Критична помилка в main: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
     main()
-

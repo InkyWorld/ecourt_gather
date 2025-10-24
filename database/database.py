@@ -8,19 +8,13 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 from config.logger import get_logger
-
+from config.config import DB_NAME, DB_DRIVER, DB_PASSWORD, DB_SERVER, DB_USER
 logger = get_logger(__name__)
-load_dotenv()
 
-server = os.environ.get("DB_SERVER")
-database = os.environ.get("DB_NAME")
-user = os.environ.get("DB_USER")
-password = os.environ.get("DB_PASSWORD")
-driver = os.environ.get("DB_DRIVER")
-password_encoded = quote_plus(password)
-driver_encoded = quote_plus(driver)
+password_encoded = quote_plus(DB_PASSWORD)
+driver_encoded = quote_plus(DB_DRIVER)
 db_url = (
-    f"mssql+pyodbc://{user}:{password_encoded}@{server}/{database}?"
+    f"mssql+pyodbc://{DB_USER}:{password_encoded}@{DB_SERVER}/{DB_NAME}?"
     f"driver={driver_encoded}&TrustServerCertificate=yes"
 )
 engine = create_engine(db_url)

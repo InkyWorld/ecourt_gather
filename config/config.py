@@ -10,4 +10,18 @@ BASE_LINK = os.getenv("BASE_LINK")
 API_VERSION = os.getenv("API_VERSION")
 BASE_LINK_AND_API_VERSION = BASE_LINK + API_VERSION
 
-TOKENS_AND_FOLDERS = json.loads(os.environ.get("TOKEN_AND_FOLDERS", "[]"))
+DB_SERVER = os.environ.get("DB_SERVER")
+DB_NAME = os.environ.get("DB_NAME")
+DB_USER = os.environ.get("DB_USER")
+DB_PASSWORD = os.environ.get("DB_PASSWORD")
+DB_DRIVER = os.environ.get("DB_DRIVER")
+
+GOV_REG_DB_SERVER = os.environ.get("GOV_REG_DB_SERVER")
+GOV_REG_DB_NAME = os.environ.get("GOV_REG_DB_NAME")
+GOV_REG_DB_USER = os.environ.get("GOV_REG_DB_USER")
+GOV_REG_DB_PASSWORD = os.environ.get("GOV_REG_DB_PASSWORD")
+
+DATA_DOCS_TABLE_NAME = os.environ.get("DATA_DOCS_TABLE_NAME")
+PARTY_DOCS_TABLE_NAME = os.environ.get("PARTY_DOCS_TABLE_NAME")
+
+TOKENS_AND_FOLDERS = json.loads(os.environ.get("TOKENS_AND_FOLDERS"))

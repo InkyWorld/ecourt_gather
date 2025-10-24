@@ -1,7 +1,20 @@
+import json
+from pathlib import Path
+from typing import Dict, List, Optional
+from urllib.parse import quote_plus
+
 from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, MetaData, Table, select
 
 from config.logger import get_logger
 from database.models import Document_data, Document_party_docs
+from config.config import (
+    GOV_REG_DB_NAME,
+    GOV_REG_DB_PASSWORD,
+    GOV_REG_DB_SERVER,
+    GOV_REG_DB_USER,
+    DB_DRIVER,
+)
 
 logger = get_logger(__name__)
 
@@ -9,7 +22,7 @@ logger = get_logger(__name__)
 class DocumentRepository:
     def __init__(self, session: Session, folder):
         self.session = session
-        self.folder = folder
+        self.folder = Path(folder)
 
     def save_document(
         self,
@@ -78,3 +91,40 @@ class DocumentRepository:
                 exc_info=True,
             )
             return None
+
+    def _fetch_data_from_db_by_date_range(
+        self, start_date: str, end_date: str, doc_type
+    ) -> Optional[List[Dict]]:
+        try:
+            metadata = MetaData()
+            password_encoded = quote_plus(GOV_REG_DB_PASSWORD)
+            driver_encoded = quote_plus(DB_DRIVER)
+            db_url = (
+                f"mssql+pyodbc://{GOV_REG_DB_USER}:{password_encoded}@{GOV_REG_DB_SERVER}/{GOV_REG_DB_NAME}?"
+                f"driver={driver_encoded}&TrustServerCertificate=yes"
+            )
+            if doc_type == "data":
+                table_name = "DocumentAce"
+            else:
+                ...
+
+            engine = create_engine(db_url)
+            table = Table(table_name, metadata, autoload_with=engine)
+
+            date_column = table.c["UpdatedAt"]
+
+            query = select(table).where(
+                date_column.between(start_date, end_date)
+            )
+
+
+            results_list = []
+            with engine.connect() as connection:
+                result = connection.execute(query)
+                for row in result:
+                    results_list.append(row._asdict())
+            
+            return results_list if results_list else None
+
+        except Exception as e:
+            print(f"Сталася помилка: {e}")

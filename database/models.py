@@ -1,14 +1,9 @@
 import os
 
-from dotenv import load_dotenv
 from sqlalchemy import BigInteger, Column, DateTime, Integer, String, func
 
 from .database import Base
-
-load_dotenv()
-
-DATA_DOCS_TABLE_NAME = os.environ.get("DATA_DOCS_TABLE_NAME")
-PARTY_DOCS_TABLE_NAME = os.environ.get("PARTY_DOCS_TABLE_NAME")
+from config.config import DATA_DOCS_TABLE_NAME, PARTY_DOCS_TABLE_NAME
 
 
 class Document_data(Base):
