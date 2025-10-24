@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from config.config import BASE_LINK_AND_API_VERSION, TOKENS_AND_FOLDERS
+from config.config import BASE_LINK_AND_API_VERSION, TOKENS_FOLDERS_COMPANIES
 from config.logger import get_logger
 from database.database import get_db_session, initialize_database
 from repo.documents import DocumentRepository
@@ -14,13 +14,15 @@ def main():
     initialize_database()
     with get_db_session() as db_session:
         try:
-            for token, folder in TOKENS_AND_FOLDERS.items():
-                doc_repo = DocumentRepository(session=db_session, folder=folder, company="Ace")
+            for token, (folder, company) in TOKENS_FOLDERS_COMPANIES.items():
+                doc_repo = DocumentRepository(
+                    session=db_session, folder=folder, company=company
+                )
                 data_doc_service = DocumentService(
-                    document_repo=doc_repo, doc_type="data", token=token, company="Ace"
+                    document_repo=doc_repo, doc_type="data", token=token, company=company
                 )
                 party_doc_service = DocumentService(
-                    document_repo=doc_repo, doc_type="party", token=token, company="Ace"
+                    document_repo=doc_repo, doc_type="party", token=token, company=company
                 )
 
                 now = datetime.now(timezone.utc)
@@ -41,23 +43,6 @@ def main():
                     start_date=start_date,
                     end_date=end_date,
                 )
-                # doc_repo = DocumentRepository(session=db_session, folder=folder, company="Unit")
-                # data_doc_service = DocumentService(
-                #     document_repo=doc_repo, doc_type="data", token=token, company="Unit"
-                # )
-                # party_doc_service = DocumentService(
-                #     document_repo=doc_repo, doc_type="party", token=token, company="Unit"
-                # )
-                # data_doc_service.gather_documents(
-                #     BASE_LINK_AND_API_VERSION,
-                #     start_date=start_date,
-                #     end_date=end_date,
-                # )
-                # party_doc_service.gather_documents(
-                #     BASE_LINK_AND_API_VERSION,
-                #     start_date=start_date,
-                #     end_date=end_date,
-                # )
         except Exception as e:
             logger.critical(f"Критична помилка в main: {e}", exc_info=True)
 
