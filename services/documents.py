@@ -13,10 +13,11 @@ logger = get_logger(__name__)
 
 
 class DocumentService:
-    def __init__(self, document_repo: DocumentRepository, doc_type: str, token):
+    def __init__(self, document_repo: DocumentRepository, doc_type: str, token, company: str):
         self.document_repo = document_repo
         self.doc_type = doc_type
         self.token = token
+        self.company = company
 
     def _fetch_data(self, url: str, query_params: Optional[Dict] = None):
         if not self.token:
@@ -106,14 +107,17 @@ class DocumentService:
             return
 
         for doc in documents:
-            doc_id = doc.get("DocumentId")
+            if self.doc_type == "data":
+                doc_id = doc.get("DocumentId")
+            else:
+                doc_id = doc.get("id")
             if not doc_id:
                 continue
 
             if self.doc_type == "data":
-                attachments = [json.loads(doc.get("OriginalText"))]
+                attachments = [json.loads(doc.get("OriginalText" if self.company == "Ace" else "originalText"))]
             else:
-                attachments = doc.get("attachments", [])
+                attachments = json.loads(doc.get("attachments"))
 
             for attachment in attachments:
                 link = attachment.get("link")

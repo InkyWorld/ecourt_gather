@@ -15,32 +15,32 @@ def main():
     with get_db_session() as db_session:
         try:
             for token, folder in TOKENS_AND_FOLDERS.items():
-                doc_repo = DocumentRepository(session=db_session, folder=folder)
+                doc_repo = DocumentRepository(session=db_session, folder=folder, company="Ace")
                 data_doc_service = DocumentService(
-                    document_repo=doc_repo, doc_type="data", token=token
+                    document_repo=doc_repo, doc_type="data", token=token, company="Ace"
                 )
                 party_doc_service = DocumentService(
-                    document_repo=doc_repo, doc_type="party", token=token
+                    document_repo=doc_repo, doc_type="party", token=token, company="Ace"
                 )
 
                 now = datetime.now(timezone.utc)
                 # start_date = (now - timedelta(hours=24, seconds=10)).isoformat()
                 # end_date = (now + timedelta(seconds=10)).isoformat()
 
-                start_date = "2025-10-06T17:26:32.000Z"
-                end_date = "2025-10-06T17:26:36.000Z"
+                start_date = "2025-10-20T18:51:17.000Z"
+                end_date = "2025-10-20T18:59:17.000Z"
                 logger.info(f"Період збору документів: {start_date} по {end_date}")
 
-                data_doc_service.gather_documents(
-                    BASE_LINK_AND_API_VERSION,
-                    start_date=start_date,
-                    end_date=end_date,
-                )
-                # party_doc_service.gather_documents(
+                # data_doc_service.gather_documents(
                 #     BASE_LINK_AND_API_VERSION,
                 #     start_date=start_date,
                 #     end_date=end_date,
                 # )
+                party_doc_service.gather_documents(
+                    BASE_LINK_AND_API_VERSION,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
         except Exception as e:
             logger.critical(f"Критична помилка в main: {e}", exc_info=True)
 

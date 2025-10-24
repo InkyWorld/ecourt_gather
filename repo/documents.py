@@ -20,9 +20,10 @@ logger = get_logger(__name__)
 
 
 class DocumentRepository:
-    def __init__(self, session: Session, folder):
+    def __init__(self, session: Session, folder, company: str):
         self.session = session
         self.folder = Path(folder)
+        self.company = company
 
     def save_document(
         self,
@@ -104,26 +105,25 @@ class DocumentRepository:
                 f"driver={driver_encoded}&TrustServerCertificate=yes"
             )
             if doc_type == "data":
-                table_name = "DocumentAce"
+                table_name = "document" + self.company
+                updated_at_c = "UpdatedAt" if GOV_REG_DB_NAME == "Ace" else "updatedAt"
             else:
-                ...
+                table_name = "partyDocs" + self.company
+                updated_at_c = "updatedAt"
 
             engine = create_engine(db_url)
             table = Table(table_name, metadata, autoload_with=engine)
 
-            date_column = table.c["UpdatedAt"]
+            date_column = table.c[updated_at_c]
 
-            query = select(table).where(
-                date_column.between(start_date, end_date)
-            )
-
+            query = select(table).where(date_column.between(start_date, end_date))
 
             results_list = []
             with engine.connect() as connection:
                 result = connection.execute(query)
                 for row in result:
                     results_list.append(row._asdict())
-            
+
             return results_list if results_list else None
 
         except Exception as e:
