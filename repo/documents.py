@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, MetaData, Table, select
 
 from config.logger import get_logger
-from database.models import Document_data, Document_party_docs
+# from database.models import Document_data, Document_party_docs
+from database.models import Documents
 from config.config import (
     GOV_REG_DB_NAME,
     GOV_REG_DB_PASSWORD,
@@ -39,30 +40,31 @@ class DocumentRepository:
         """
 
         try:
-            (self.folder / "data_docs").mkdir(parents=True, exist_ok=True)
-            (self.folder / "party_docs").mkdir(parents=True, exist_ok=True)
-            if doc_type == "data":
-                file_path = self.folder / "data_docs" / file_name
-            else:
-                file_path = self.folder / "party_docs" / file_name
-
-            with open(file_path, "wb") as f:
+            self.folder.mkdir(parents=True, exist_ok=True)
+            with open(self.folder / file_name, "wb") as f:
                 f.write(file_content)
 
-            if doc_type == "data":
-                db_document = Document_data(
-                    original_url=original_url,
-                    local_path=file_name,
-                    size=size_in_bytes,
-                    doc_id=doc_id,
-                )
-            elif doc_type == "party":
-                db_document = Document_party_docs(
-                    original_url=original_url,
-                    local_path=file_name,
-                    size=size_in_bytes,
-                    doc_id=doc_id,
-                )
+            db_document = Documents(
+                original_url=original_url,
+                local_path=file_name,
+                size=size_in_bytes,
+                doc_id=doc_id,
+            )
+            self.session.add(db_document)
+            self.session.commit()
+        except Exception as e:
+            logger.error(f"Помилка збереження файлу в БД: {e}", exc_info=True)
+            self.session.rollback()
+            raise
+    
+    def save_document_only_in_db(
+        self,
+        doc_id: str
+    ):
+        try:
+            db_document = Documents(
+                doc_id=doc_id,
+            )
             self.session.add(db_document)
             self.session.commit()
         except Exception as e:
@@ -81,14 +83,10 @@ class DocumentRepository:
             Об'єкт Document, якщо знайдено, інакше None.
         """
         try:
-            if doc_type == "data":
-                model = Document_data
-            elif doc_type == "party":
-                model = Document_party_docs
             return (
-                self.session.query(model)
-                .filter(model.original_url == original_url)
-                .first()
+                self.session.query(Documents)
+                .filter(Documents.original_url == original_url)
+                .all()
             )
         except Exception as e:
             logger.error(
@@ -110,7 +108,7 @@ class DocumentRepository:
             )
             if doc_type == "data":
                 table_name = "document" + self.company
-                updated_at_c = "UpdatedAt" if GOV_REG_DB_NAME == "Ace" else "updatedAt"
+                updated_at_c = "UpdatedAt" if self.company == "Ace" else "updatedAt"
             else:
                 table_name = "partyDocs" + self.company
                 updated_at_c = "updatedAt"

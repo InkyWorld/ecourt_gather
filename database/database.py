@@ -2,13 +2,13 @@ import os
 from contextlib import contextmanager
 from urllib.parse import quote_plus
 
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 from config.logger import get_logger
 from config.config import DB_NAME, DB_DRIVER, DB_PASSWORD, DB_SERVER, DB_USER
+
 logger = get_logger(__name__)
 
 password_encoded = quote_plus(DB_PASSWORD)
@@ -17,7 +17,7 @@ db_url = (
     f"mssql+pyodbc://{DB_USER}:{password_encoded}@{DB_SERVER}/{DB_NAME}?"
     f"driver={driver_encoded}&TrustServerCertificate=yes"
 )
-engine = create_engine(db_url)
+engine = create_engine(db_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

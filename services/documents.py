@@ -2,6 +2,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from time import time
 from typing import Dict, List, Optional
 
 import requests
@@ -87,8 +88,17 @@ class DocumentService:
                 original_url, file_content, file_name, size_in_bytes, doc_type, doc_id
             )
 
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                logger.warning(f"Файл не знайдено за посиланням (404): {base_url}")
+            elif e.response.status_code == 403:
+                logger.warning(f"Доступ заборонено (403) до файлу: {base_url}")
+            else:
+                logger.error(f"HTTP помилка завантаження файлу {base_url}: {e}", exc_info=True)
+            raise
+
         except requests.exceptions.RequestException as e:
-            logger.error(f"Помилка завантаження файлу {base_url}: {e}", exc_info=True)
+            logger.error(f"Загальна помилка завантаження файлу {base_url}: {e}", exc_info=True)
             raise
 
     def gather_documents(self, base_link: str, start_date: str, end_date: str):
@@ -101,7 +111,12 @@ class DocumentService:
                 f"Не знайдено документів типу '{self.doc_type}' за вказаний період."
             )
             return
-        no_files_saved = 0
+        files_not_saved = 0
+        files_not_saved_404 = 0
+        all_files = 0
+        start_time = time()
+        files_in_db = 0
+        all_attachments_count = 0
         for doc in documents:
             if self.doc_type == "data":
                 doc_id = doc.get("DocumentId")
@@ -114,24 +129,40 @@ class DocumentService:
                 attachments = [json.loads(doc.get("OriginalText" if self.company == "Ace" else "originalText"))]
             else:
                 attachments = json.loads(doc.get("attachments"))
-
-            for attachment in attachments:
-                link = attachment.get("link")
-                if not link:
-                    continue
-                ext = Path(link).suffix
-                if self.doc_type != "data":
-                    file_name = f"{doc_id}-{attachment.get('attachNum')}{ext}"
-                else:
-                    file_name = f"{doc_id}{ext}"
-                if not link:
-                    continue
-                if self.document_repo.find_by_file_link(link, self.doc_type):
-                    continue
-                try:
-                    self._download_and_save_to_db(
-                        f"{base_link}storage/file/{link}", link, file_name, self.doc_type, doc_id
-                    )
-                except Exception:
-                    no_files_saved += 1
-        logger.info(f"Не збережених файлів {no_files_saved}")
+            all_attachments_count += len(attachments)
+            if attachments:
+                for attachment in attachments:
+                    link = attachment.get("link")
+                    if not link:
+                        print("no link")
+                        continue
+                    else:
+                        all_files += 1
+                    ext = Path(link).suffix
+                    if self.doc_type != "data":
+                        file_name = f"{doc_id}-{attachment.get('attachNum')}{ext}"
+                    else:
+                        file_name = f"{doc_id}{ext}"
+                    already_in_db = self.document_repo.find_by_file_link(link, self.doc_type)
+                    is_duplicate = False
+                    if already_in_db:
+                        files_in_db += len(already_in_db)
+                        is_duplicate = any(db_doc.doc_id == doc_id for db_doc in already_in_db)
+                        if is_duplicate:
+                            continue
+                    try:
+                        self._download_and_save_to_db(
+                            f"{base_link}storage/file/{link}", link, file_name, self.doc_type, doc_id
+                        )
+                    except requests.exceptions.HTTPError as e:
+                        if e.response.status_code == 404:
+                            files_not_saved += 1
+                            files_not_saved_404 += 1
+                    except Exception:
+                        files_not_saved += 1
+        logger.info(f"Зайняло часу {time() - start_time:.2f}")
+        logger.info(f"Всього посилань на файли {all_files}")
+        logger.info(f"Всього attachments {all_attachments_count}")
+        logger.info(f"Всього знайдено в бд {files_in_db}")
+        logger.info(f"Не збережених файлів {files_not_saved} усього")
+        logger.info(f"Не збережених файлів через {files_not_saved} 404")
