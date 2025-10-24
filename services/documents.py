@@ -71,7 +71,7 @@ class DocumentService:
         return documents
 
     def _download_and_save_to_db(
-        self, base_url: str, original_url: str, file_name: str, doc_type: str
+        self, base_url: str, original_url: str, file_name: str, doc_type: str, doc_id: str
     ):
         if not self.token:
             logger.critical("Не знайдено API_BEARER_TOKEN.")
@@ -84,7 +84,7 @@ class DocumentService:
             file_content = response.content
             size_in_bytes = len(file_content)
             self.document_repo.save_document(
-                original_url, file_content, file_name, size_in_bytes, doc_type
+                original_url, file_content, file_name, size_in_bytes, doc_type, doc_id
             )
 
         except requests.exceptions.RequestException as e:
@@ -133,5 +133,5 @@ class DocumentService:
                 if self.document_repo.find_by_file_link(link, self.doc_type):
                     continue
                 self._download_and_save_to_db(
-                    f"{base_link}storage/file/{link}", link, file_name, self.doc_type
+                    f"{base_link}storage/file/{link}", link, file_name, self.doc_type, doc_id
                 )

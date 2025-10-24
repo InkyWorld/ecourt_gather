@@ -32,6 +32,7 @@ class DocumentRepository:
         file_name: str,
         size_in_bytes: int,
         doc_type: str,
+        doc_id: str
     ):
         """
         Зберігає новий документ у базі даних.
@@ -53,12 +54,14 @@ class DocumentRepository:
                     original_url=original_url,
                     local_path=file_name,
                     size=size_in_bytes,
+                    doc_id=doc_id,
                 )
             elif doc_type == "party":
                 db_document = Document_party_docs(
                     original_url=original_url,
                     local_path=file_name,
                     size=size_in_bytes,
+                    doc_id=doc_id,
                 )
             self.session.add(db_document)
             self.session.commit()
