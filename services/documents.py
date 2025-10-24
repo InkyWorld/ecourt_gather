@@ -89,23 +89,19 @@ class DocumentService:
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Помилка завантаження файлу {base_url}: {e}", exc_info=True)
+            raise
 
     def gather_documents(self, base_link: str, start_date: str, end_date: str):
-        # endpoint = "data/document" if self.doc_type == "data" else "party-docs/document"
-
         documents = self.document_repo._fetch_data_from_db_by_date_range(
             start_date, end_date, self.doc_type
         )
-        # documents = self._fetch_data_by_date_range(
-        #     f"{base_link}{endpoint}", start_date, end_date
-        # )
 
         if not documents:
             logger.warning(
                 f"Не знайдено документів типу '{self.doc_type}' за вказаний період."
             )
             return
-
+        no_files_saved = 0
         for doc in documents:
             if self.doc_type == "data":
                 doc_id = doc.get("DocumentId")
@@ -132,6 +128,10 @@ class DocumentService:
                     continue
                 if self.document_repo.find_by_file_link(link, self.doc_type):
                     continue
-                self._download_and_save_to_db(
-                    f"{base_link}storage/file/{link}", link, file_name, self.doc_type, doc_id
-                )
+                try:
+                    self._download_and_save_to_db(
+                        f"{base_link}storage/file/{link}", link, file_name, self.doc_type, doc_id
+                    )
+                except Exception:
+                    no_files_saved += 1
+        logger.info(f"Не збережених файлів {no_files_saved}")

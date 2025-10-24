@@ -68,6 +68,7 @@ class DocumentRepository:
         except Exception as e:
             logger.error(f"Помилка збереження файлу в БД: {e}", exc_info=True)
             self.session.rollback()
+            raise
 
     def find_by_file_link(self, original_url: str, doc_type: str):
         """
@@ -126,7 +127,7 @@ class DocumentRepository:
                 result = connection.execute(query)
                 for row in result:
                     results_list.append(row._asdict())
-
+            logger.info(f"Для цього проміжку знайдено {len(results_list)} записів")
             return results_list if results_list else None
 
         except Exception as e:

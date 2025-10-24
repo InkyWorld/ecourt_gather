@@ -24,7 +24,6 @@ def main():
                 party_doc_service = DocumentService(
                     document_repo=doc_repo, doc_type="party", token=token, company=company
                 )
-
                 now = datetime.now(timezone.utc)
                 # start_date = (now - timedelta(hours=24, seconds=10)).isoformat()
                 # end_date = (now + timedelta(seconds=10)).isoformat()
