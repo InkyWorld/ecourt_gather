@@ -14,7 +14,7 @@ def main():
     initialize_database()
     with get_db_session() as db_session:
         try:
-            for token, folder in TOKENS_AND_FOLDERS:
+            for token, folder in TOKENS_AND_FOLDERS.items():
                 doc_repo = DocumentRepository(session=db_session, folder=folder)
                 data_doc_service = DocumentService(
                     document_repo=doc_repo, doc_type="data", token=token
