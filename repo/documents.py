@@ -189,3 +189,15 @@ class DocumentRepository:
 
         except Exception as e:
             print(f"Сталася помилка: {e}")
+    
+    def get_existing_links_set(self) -> set:
+        """
+        Завантажує множину всіх існуючих original_url з таблиці Documents.
+        """
+        try:
+            query = select(Documents.original_url)
+            results = self.session.execute(query).scalars().all()
+            return set(results)
+        except Exception as e:
+            logger.error(f"Помилка отримання існуючих посилань: {e}", exc_info=True)
+            return set()

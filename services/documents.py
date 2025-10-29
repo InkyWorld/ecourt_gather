@@ -210,7 +210,11 @@ class DocumentService:
             )
             return
         
-        files_in_db = 0
+        logger.info("Завантажуємо існуючі посилання з бази даних...")
+        existing_links_set = self.document_repo.get_existing_links_set()
+        logger.info(f"Завантажено {len(existing_links_set)} існуючих унікальних посилань.")
+
+        files_in_db_count = 0
         all_attachments_count = 0
         files_to_download = set()
         
@@ -237,7 +241,12 @@ class DocumentService:
                         attachNum_log = attachment.get("attachNum", "N/A")
                         logger.warning(f"no link in {doc_id=} {attachNum_log=} found, skipping...")
                         continue
-                        
+
+                    if link in existing_links_set:
+                        files_in_db_count += 1
+                        continue
+                    
+                    existing_links_set.add(link)
                     ext = Path(link).suffix
                     attachNum = ""
                     
@@ -247,10 +256,6 @@ class DocumentService:
                     else:
                         file_name = f"{doc_id}"
                     file_name += ext
-                    already_in_db = self.document_repo.find_by_file_link(link, self.doc_type)
-                    if already_in_db:
-                        files_in_db += len(already_in_db)
-                        continue
                     files_to_download.add(
                         (f"{base_link}storage/file/{link}", link, file_name)
                     )
@@ -258,7 +263,7 @@ class DocumentService:
                 logger.warning(f"No attachments found for document ID {doc_id}.")
 
         logger.info(f"Всього attachments {all_attachments_count}")
-        logger.info(f"Всього знайдено в бд {files_in_db} по посиланнях")
+        logger.info(f"Всього знайдено в бд {files_in_db_count} по посиланнях")
         logger.info(f"Всього посилань на файли {len(files_to_download)} для завантаження")
 
         if not files_to_download:

@@ -32,7 +32,7 @@ def main():
                 )
                 now = datetime.now(timezone.utc)
                 start_date = (
-                    now - timedelta(weeks=30, hours=24, seconds=10)
+                    now - timedelta(weeks=5000, hours=24, seconds=10)
                 ).isoformat()
                 end_date = (now + timedelta(seconds=10)).isoformat()
 
