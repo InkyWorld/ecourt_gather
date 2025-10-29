@@ -1,11 +1,15 @@
+import asyncio
 import json
 import os
 import sys
 from pathlib import Path
 from time import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
+import httpx
 import requests
+from sqlalchemy import Tuple
+from tqdm.asyncio import tqdm
 
 from config.logger import get_logger
 from repo.documents import DocumentRepository
@@ -72,7 +76,7 @@ class DocumentService:
         return documents
 
     def _download_and_save_to_db(
-        self, base_url: str, original_url: str, file_name: str, doc_type: str, doc_id: str
+        self, base_url: str, original_url: str, file_name: str
     ):
         if not self.token:
             logger.critical("Не знайдено API_BEARER_TOKEN.")
@@ -85,7 +89,7 @@ class DocumentService:
             file_content = response.content
             size_in_bytes = len(file_content)
             self.document_repo.save_document(
-                original_url, file_content, file_name, size_in_bytes, doc_type, doc_id
+                original_url, file_content, file_name, size_in_bytes
             )
 
         except requests.exceptions.HTTPError as e:
@@ -101,6 +105,100 @@ class DocumentService:
             logger.error(f"Загальна помилка завантаження файлу {base_url}: {e}", exc_info=True)
             raise
 
+    async def _download_and_save_to_db_async(
+        self, client: httpx.AsyncClient, base_url: str, original_url: str, file_name: str
+    ) -> str:
+        """
+        Асинхронно завантажує файл і зберігає його в БД.
+        Повертає статус: 'success', '404', 'failed'
+        """
+        if not self.token:
+            logger.critical("Не знайдено API_BEARER_TOKEN.")
+            return "failed"
+
+        headers = {"Authorization": f"Bearer {self.token}"}
+        try:
+            response = await client.get(
+                base_url, headers=headers, timeout=360, follow_redirects=True
+            )
+            response.raise_for_status()
+
+            file_content = response.content
+            size_in_bytes = len(file_content)
+
+            # Викликаємо оновлений метод репозиторію
+            db_success = await self.document_repo.save_document_async(
+                original_url,
+                file_content,
+                file_name,
+                size_in_bytes,
+            )
+            
+            if db_success:
+                return "success"
+            else:
+                return "failed"
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                logger.warning(f"Файл не знайдено за посиланням (404): {base_url}")
+                return "404"
+            elif e.response.status_code == 403:
+                logger.warning(f"Доступ заборонено (403) до файлу: {base_url}")
+                return "failed"
+            else:
+                logger.error(f"HTTP помилка завантаження файлу {base_url}: {e}", exc_info=True)
+                return "failed"
+
+        except (httpx.RequestError, Exception) as e:
+            logger.error(f"Загальна помилка завантаження файлу {base_url}: {e}", exc_info=True)
+            return "failed"
+
+    async def _run_all_downloads_async(
+        self, files_to_download: Set[Tuple], concurrency_limit: int = 10
+    ) -> Dict[str, int]:
+        """
+        Асинхронно запускає всі завдання на завантаження з обмеженням паралелізму.
+        """
+        semaphore = asyncio.Semaphore(concurrency_limit)
+        stats = {"success": 0, "not_found": 0, "failed": 0}
+        
+        async with httpx.AsyncClient() as client:
+
+            async def semaphore_task_wrapper(base_url, original_url, file_name):
+                async with semaphore:
+                    return await self._download_and_save_to_db_async(
+                        client, base_url, original_url, file_name
+                    )
+
+            tasks = []
+            for base_url, original_url, file_name in files_to_download:
+                tasks.append(semaphore_task_wrapper(base_url, original_url, file_name))
+
+            logger.info(
+                f"Запускаємо {len(tasks)} паралельних завдань "
+                f"з обмеженням {concurrency_limit} одночасних завантажень..."
+            )
+
+            for future in tqdm(
+                asyncio.as_completed(tasks),
+                total=len(tasks),
+                desc="Завантаження файлів",
+            ):
+                try:
+                    result = await future
+                    if result == "success":
+                        stats["success"] += 1
+                    elif result == "404":
+                        stats["not_found"] += 1
+                    else:
+                        stats["failed"] += 1
+                except Exception as e:
+                    logger.error(f"Помилка у виконанні завдання: {e}", exc_info=True)
+                    stats["failed"] += 1
+        
+        return stats
+    
     def gather_documents(self, base_link: str, start_date: str, end_date: str):
         documents = self.document_repo._fetch_data_from_db_by_date_range(
             start_date, end_date, self.doc_type
@@ -111,13 +209,14 @@ class DocumentService:
                 f"Не знайдено документів типу '{self.doc_type}' за вказаний період."
             )
             return
-        files_not_saved = 0
-        files_not_saved_404 = 0
-        all_files = 0
-        start_time = time()
+        
         files_in_db = 0
         all_attachments_count = 0
-        for doc in documents:
+        files_to_download = set()
+        
+        logger.info(f"Знайдено {len(documents)} документів. Починаємо обробку...")
+
+        for doc in tqdm(documents, desc="Обробка документів"):
             if self.doc_type == "data":
                 doc_id = doc.get("DocumentId")
             else:
@@ -126,43 +225,55 @@ class DocumentService:
                 continue
 
             if self.doc_type == "data":
-                attachments = [json.loads(doc.get("OriginalText" if self.company == "Ace" else "originalText"))]
+                attachments = [json.loads(doc.get("originalText"))]
             else:
                 attachments = json.loads(doc.get("attachments"))
-            all_attachments_count += len(attachments)
+
             if attachments:
+                all_attachments_count += len(attachments)
                 for attachment in attachments:
                     link = attachment.get("link")
                     if not link:
-                        print("no link")
+                        attachNum_log = attachment.get("attachNum", "N/A")
+                        logger.warning(f"no link in {doc_id=} {attachNum_log=} found, skipping...")
                         continue
-                    else:
-                        all_files += 1
+                        
                     ext = Path(link).suffix
+                    attachNum = ""
+                    
                     if self.doc_type != "data":
-                        file_name = f"{doc_id}-{attachment.get('attachNum')}{ext}"
+                        attachNum = attachment.get("attachNum")
+                        file_name = f"{doc_id}-{attachNum}"
                     else:
-                        file_name = f"{doc_id}{ext}"
+                        file_name = f"{doc_id}"
+                    file_name += ext
                     already_in_db = self.document_repo.find_by_file_link(link, self.doc_type)
-                    is_duplicate = False
                     if already_in_db:
                         files_in_db += len(already_in_db)
-                        is_duplicate = any(db_doc.doc_id == doc_id for db_doc in already_in_db)
-                        if is_duplicate:
-                            continue
-                    try:
-                        self._download_and_save_to_db(
-                            f"{base_link}storage/file/{link}", link, file_name, self.doc_type, doc_id
-                        )
-                    except requests.exceptions.HTTPError as e:
-                        if e.response.status_code == 404:
-                            files_not_saved += 1
-                            files_not_saved_404 += 1
-                    except Exception:
-                        files_not_saved += 1
-        logger.info(f"Зайняло часу {time() - start_time:.2f}")
-        logger.info(f"Всього посилань на файли {all_files}")
+                        continue
+                    files_to_download.add(
+                        (f"{base_link}storage/file/{link}", link, file_name)
+                    )
+            else:
+                logger.warning(f"No attachments found for document ID {doc_id}.")
+
         logger.info(f"Всього attachments {all_attachments_count}")
-        logger.info(f"Всього знайдено в бд {files_in_db}")
+        logger.info(f"Всього знайдено в бд {files_in_db} по посиланнях")
+        logger.info(f"Всього посилань на файли {len(files_to_download)} для завантаження")
+
+        if not files_to_download:
+            logger.info("Немає нових файлів для завантаження.")
+            return
+
+        stats = asyncio.run(self._run_all_downloads_async(files_to_download, concurrency_limit=10))
+
+        # --- Логування результатів ---
+        files_not_saved = stats["failed"] + stats["not_found"]
+        files_not_saved_404 = stats["not_found"]
+
+        logger.info("--- Результати завантаження ---")
+        logger.info(f"Успішно завантажено: {stats['success']}")
         logger.info(f"Не збережених файлів {files_not_saved} усього")
-        logger.info(f"Не збережених файлів через {files_not_saved} 404")
+        logger.info(f"  - з них не знайдено (404): {files_not_saved_404}")
+        logger.info(f"  - з них інші помилки: {stats['failed']}")
+        logger.info("---------------------------------")

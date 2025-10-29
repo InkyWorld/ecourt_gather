@@ -31,12 +31,16 @@ def main():
                     company=company,
                 )
                 now = datetime.now(timezone.utc)
-                start_date = (now - timedelta(weeks=5000, hours=24, seconds=10)).isoformat()
+                start_date = (
+                    now - timedelta(weeks=30, hours=24, seconds=10)
+                ).isoformat()
                 end_date = (now + timedelta(seconds=10)).isoformat()
 
-                # start_date = "2025-10-15T01:01:37.000Z"
-                # end_date = "2025-10-17T20:29:37.000Z"
-                logger.info(f"Період збору документів data_doc: {start_date} по {end_date}")
+                # start_date = "2025-10-16T20:01:37.000Z"
+                # end_date = "2025-10-16T20:09:37.000Z"
+                logger.info(
+                    f"Період збору документів data_doc: {start_date} по {end_date}"
+                )
 
                 data_doc_service.gather_documents(
                     BASE_LINK_AND_API_VERSION,
@@ -44,7 +48,9 @@ def main():
                     end_date=end_date,
                 )
 
-                logger.info(f"Період збору документів party_doc: {start_date} по {end_date}")
+                logger.info(
+                    f"Період збору документів party_doc: {start_date} по {end_date}"
+                )
                 party_doc_service.gather_documents(
                     BASE_LINK_AND_API_VERSION,
                     start_date=start_date,
