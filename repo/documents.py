@@ -91,7 +91,7 @@ class DocumentRepository:
 
         except IntegrityError:
             session.rollback()
-            return False
+            return True
         except Exception as e:
             logger.error(f"Неочікувана помилка БД в _save_document_task_sync: {e}", exc_info=True)
             session.rollback()

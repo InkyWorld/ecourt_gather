@@ -118,12 +118,20 @@ class DocumentService:
 
         headers = {"Authorization": f"Bearer {self.token}"}
         try:
-            response = await client.get(
-                base_url, headers=headers, timeout=360, follow_redirects=True
-            )
-            response.raise_for_status()
-
-            file_content = response.content
+            for attempt in range(1, 10):
+                try:
+                    response = await client.get(
+                        base_url, headers=headers
+                    )
+                    response.raise_for_status()
+                    file_content = response.content
+                    break
+                except (httpx.ReadTimeout, httpx.ConnectTimeout):
+                    await asyncio.sleep(10)
+                    logger.info(f"Таймаут при завантаженні файлу {base_url}, спроба {attempt}/9")
+                    if attempt == 9:
+                        logger.error(f"Таймаут при завантаженні файлу {base_url} після 9 спроб.")
+                        return "failed"
             size_in_bytes = len(file_content)
 
             # Викликаємо оновлений метод репозиторію
@@ -163,7 +171,7 @@ class DocumentService:
         semaphore = asyncio.Semaphore(concurrency_limit)
         stats = {"success": 0, "not_found": 0, "failed": 0}
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
 
             async def semaphore_task_wrapper(base_url, original_url, file_name):
                 async with semaphore:
