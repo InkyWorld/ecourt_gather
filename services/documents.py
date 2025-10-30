@@ -105,62 +105,51 @@ class DocumentService:
             logger.error(f"Загальна помилка завантаження файлу {base_url}: {e}", exc_info=True)
             raise
 
-    async def _download_and_save_to_db_async(
-        self, client: httpx.AsyncClient, base_url: str, original_url: str, file_name: str
-    ) -> str:
-        """
-        Асинхронно завантажує файл і зберігає його в БД.
-        Повертає статус: 'success', '404', 'failed'
-        """
+    async def _download_and_save_to_db_async(self, base_url: str, original_url: str, file_name: str) -> str:
         if not self.token:
             logger.critical("Не знайдено API_BEARER_TOKEN.")
             return "failed"
 
         headers = {"Authorization": f"Bearer {self.token}"}
-        try:
-            for attempt in range(1, 10):
-                try:
-                    response = await client.get(
-                        base_url, headers=headers
-                    )
-                    response.raise_for_status()
-                    file_content = response.content
-                    break
-                except (httpx.ReadTimeout, httpx.ConnectTimeout):
-                    await asyncio.sleep(10)
-                    logger.info(f"Таймаут при завантаженні файлу {base_url}, спроба {attempt}/9")
-                    if attempt == 9:
-                        logger.error(f"Таймаут при завантаженні файлу {base_url} після 9 спроб.")
-                        return "failed"
-            size_in_bytes = len(file_content)
 
-            # Викликаємо оновлений метод репозиторію
-            db_success = await self.document_repo.save_document_async(
-                original_url,
-                file_content,
-                file_name,
-                size_in_bytes,
-            )
-            
-            if db_success:
-                return "success"
-            else:
-                return "failed"
+        for attempt in range(1, 10):
+            try:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(600.0)) as client:
+                    async with client.stream("GET", base_url, headers=headers, follow_redirects=True) as response:
+                        response.raise_for_status()
 
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                logger.warning(f"Файл не знайдено за посиланням (404): {base_url}")
-                return "404"
-            elif e.response.status_code == 403:
-                logger.warning(f"Доступ заборонено (403) до файлу: {base_url}")
-                return "failed"
-            else:
-                logger.error(f"HTTP помилка завантаження файлу {base_url}: {e}", exc_info=True)
-                return "failed"
+                        chunks = []
+                        async for chunk in response.aiter_bytes():
+                            chunks.append(chunk)
+                        file_content = b"".join(chunks)
 
-        except (httpx.RequestError, Exception) as e:
-            logger.error(f"Загальна помилка завантаження файлу {base_url}: {e}", exc_info=True)
-            return "failed"
+                size_in_bytes = len(file_content)
+                db_success = await self.document_repo.save_document_async(
+                    original_url, file_content, file_name, size_in_bytes
+                )
+                return "success" if db_success else "failed"
+
+            except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.ReadError) as e:
+                logger.warning(f"Помилка з'єднання при {base_url} ({type(e).__name__}), спроба {attempt}/9")
+                await asyncio.sleep(10)
+                if attempt == 9:
+                    logger.error(f"Не вдалося завантажити після 9 спроб: {base_url}")
+                    return "failed"
+
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    logger.warning(f"Файл не знайдено (404): {base_url}")
+                    return "404"
+                elif e.response.status_code == 403:
+                    logger.warning(f"Доступ заборонено (403): {base_url}")
+                    return "failed"
+                else:
+                    logger.error(f"HTTP помилка завантаження файлу {base_url}: {e}", exc_info=True)
+                    return "failed"
+
+            except Exception as e:
+                logger.error(f"Загальна помилка завантаження файлу {base_url}: {e}", exc_info=True)
+                return "failed"
 
     async def _run_all_downloads_async(
         self, files_to_download: Set[Tuple], concurrency_limit: int = 10
@@ -170,40 +159,38 @@ class DocumentService:
         """
         semaphore = asyncio.Semaphore(concurrency_limit)
         stats = {"success": 0, "not_found": 0, "failed": 0}
-        
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
 
-            async def semaphore_task_wrapper(base_url, original_url, file_name):
-                async with semaphore:
-                    return await self._download_and_save_to_db_async(
-                        client, base_url, original_url, file_name
-                    )
+        async def semaphore_task_wrapper(base_url, original_url, file_name):
+            async with semaphore:
+                return await self._download_and_save_to_db_async(
+                    base_url, original_url, file_name
+                )
 
-            tasks = []
-            for base_url, original_url, file_name in files_to_download:
-                tasks.append(semaphore_task_wrapper(base_url, original_url, file_name))
+        tasks = []
+        for base_url, original_url, file_name in files_to_download:
+            tasks.append(semaphore_task_wrapper(base_url, original_url, file_name))
 
-            logger.info(
-                f"Запускаємо {len(tasks)} паралельних завдань "
-                f"з обмеженням {concurrency_limit} одночасних завантажень..."
-            )
+        logger.info(
+            f"Запускаємо {len(tasks)} паралельних завдань "
+            f"з обмеженням {concurrency_limit} одночасних завантажень..."
+        )
 
-            for future in tqdm(
-                asyncio.as_completed(tasks),
-                total=len(tasks),
-                desc="Завантаження файлів",
-            ):
-                try:
-                    result = await future
-                    if result == "success":
-                        stats["success"] += 1
-                    elif result == "404":
-                        stats["not_found"] += 1
-                    else:
-                        stats["failed"] += 1
-                except Exception as e:
-                    logger.error(f"Помилка у виконанні завдання: {e}", exc_info=True)
+        for future in tqdm(
+            asyncio.as_completed(tasks),
+            total=len(tasks),
+            desc="Завантаження файлів",
+        ):
+            try:
+                result = await future
+                if result == "success":
+                    stats["success"] += 1
+                elif result == "404":
+                    stats["not_found"] += 1
+                else:
                     stats["failed"] += 1
+            except Exception as e:
+                logger.error(f"Помилка у виконанні завдання: {e}", exc_info=True)
+                stats["failed"] += 1
         
         return stats
     
