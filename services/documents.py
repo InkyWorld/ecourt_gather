@@ -1,5 +1,4 @@
 import asyncio
-from io import BytesIO
 import json
 import os
 import sys
@@ -84,7 +83,8 @@ class DocumentService:
             logger.critical("Не знайдено API_BEARER_TOKEN.")
             return
 
-        headers = {"Authorization": f"Bearer {self.token}"}
+        headers = {"Authorization": f"Bearer {self.token}",
+                   "Accept": f"application/{original_url.split('.')[-1]}"}
         try:
             response = requests.get(base_url, headers=headers, stream=True, timeout=360)
             response.raise_for_status()
@@ -119,18 +119,16 @@ class DocumentService:
                 async with httpx.AsyncClient(timeout=httpx.Timeout(600.0)) as client:
                     async with client.stream("GET", base_url, headers=headers, follow_redirects=True) as response:
                         response.raise_for_status()
-                        file_buffer = BytesIO()
+
+                        chunks = []
                         async for chunk in response.aiter_bytes():
-                            file_buffer.write(chunk)
-                        file_buffer.seek(0)
+                            chunks.append(chunk)
+                        file_content = b"".join(chunks)
 
-                file_buffer.seek(0, 2)
-                size_in_bytes = file_buffer.tell()
-                file_buffer.seek(0)
+                size_in_bytes = len(file_content)
                 db_success = await self.document_repo.save_document_async(
-                    original_url, file_buffer.getvalue(), file_name, size_in_bytes
+                    original_url, file_content, file_name, size_in_bytes
                 )
-
                 return "success" if db_success else "failed"
 
             except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.ReadError):
