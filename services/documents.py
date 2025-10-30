@@ -65,7 +65,8 @@ class DocumentService:
                 url, query_params={"filter": filters, "limit": 100, "offset": offset}
             )
             offset += 100
-            documents.extend(new_docs.get("data"))
+            if new_docs and new_docs.get("data"):
+                documents.extend(new_docs.get("data"))
             if not new_docs:
                 break
             if pageCount == 0:
@@ -105,7 +106,7 @@ class DocumentService:
             logger.error(f"Загальна помилка завантаження файлу {base_url}: {e}", exc_info=True)
             raise
 
-    async def _download_and_save_to_db_async(self, base_url: str, original_url: str, file_name: str) -> str:
+    async def _download_and_save_to_db_async(self, base_url: str, original_url: str, file_name: str):
         if not self.token:
             logger.critical("Не знайдено API_BEARER_TOKEN.")
             return "failed"
@@ -129,8 +130,7 @@ class DocumentService:
                 )
                 return "success" if db_success else "failed"
 
-            except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.ReadError) as e:
-                logger.warning(f"Помилка з'єднання при {base_url} ({type(e).__name__}), спроба {attempt}/9")
+            except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.ReadError):
                 await asyncio.sleep(10)
                 if attempt == 9:
                     logger.error(f"Не вдалося завантажити після 9 спроб: {base_url}")
