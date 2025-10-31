@@ -201,3 +201,39 @@ class DocumentRepository:
         except Exception as e:
             logger.error(f"Помилка отримання існуючих посилань: {e}", exc_info=True)
             return set()
+
+
+    def find_file_by_original_or_attachments(self, attachmentsList_or_originalDict: Dict|List):
+        all_links = []
+
+        try:
+            if isinstance(attachmentsList_or_originalDict, None.__class__):
+                raise ValueError("attachmentsList_or_originalDict не може бути None")
+            
+            elif isinstance(attachmentsList_or_originalDict, dict):
+                link = attachmentsList_or_originalDict.get("link")
+                if link:
+                    all_links.append(link)
+
+            elif isinstance(attachmentsList_or_originalDict, list):
+                for attachment in attachmentsList_or_originalDict:
+                    link = attachment.get("link")
+                    if link:
+                        all_links.append(link)
+            
+            if not all_links:
+                return []
+        
+            documents = (
+                self.session.query(Documents)
+                .filter(Documents.original_url.in_(all_links))
+                .all()
+            )
+            return documents
+
+        except Exception as e:
+            logger.error(
+                f"Помилка пошуку документа за посиланнями {all_links}: {e}",
+                exc_info=True,
+            )
+            return None

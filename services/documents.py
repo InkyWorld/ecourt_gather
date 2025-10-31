@@ -83,8 +83,7 @@ class DocumentService:
             logger.critical("Не знайдено API_BEARER_TOKEN.")
             return
 
-        headers = {"Authorization": f"Bearer {self.token}",
-                   "Accept": f"application/{original_url.split('.')[-1]}"}
+        headers = {"Authorization": f"Bearer {self.token}"}
         try:
             response = requests.get(base_url, headers=headers, stream=True, timeout=360)
             response.raise_for_status()
@@ -278,3 +277,6 @@ class DocumentService:
         logger.info(f"  - з них не знайдено (404): {files_not_saved_404}")
         logger.info(f"  - з них інші помилки: {stats['failed']}")
         logger.info("---------------------------------")
+
+
+
