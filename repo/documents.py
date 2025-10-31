@@ -224,12 +224,12 @@ class DocumentRepository:
             if not all_links:
                 return []
         
-            documents = (
+            documents: List[Documents] = (
                 self.session.query(Documents)
                 .filter(Documents.original_url.in_(all_links))
                 .all()
             )
-            return documents
+            return {doc.original_url: doc.local_path for doc in documents}
 
         except Exception as e:
             logger.error(
